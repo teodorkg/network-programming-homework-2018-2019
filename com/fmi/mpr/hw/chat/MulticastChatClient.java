@@ -9,6 +9,8 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Scanner;
 
+import static com.fmi.mpr.hw.chat.Globals.*;
+
 public class MulticastChatClient implements Runnable{
     private DatagramSocket socketOut;
     private MulticastSocket socketIn;
@@ -18,7 +20,7 @@ public class MulticastChatClient implements Runnable{
     public MulticastChatClient() {
         try {
             socketOut = new DatagramSocket();
-            socketIn = new MulticastSocket(8888);
+            socketIn = new MulticastSocket(PORT);
         } catch (SocketException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -37,23 +39,23 @@ public class MulticastChatClient implements Runnable{
         receiveThread = new Thread(receiver);
         receiveThread.start();
         try {
-            handleSend("230.0.0.1", 8888);
+            handleSend();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private void handleSend(String ip, int port) throws IOException {
+    private void handleSend() throws IOException {
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
         String cmd;
         while ((cmd = reader.readLine()) != null) {
             if ("sendText".equalsIgnoreCase(cmd)) {
-                sendUDPText(socketOut, "230.0.0.1", 8888);
+                sendUDPText(socketOut);
             } else if ("sendImage".equalsIgnoreCase(cmd) || "sendVideo".equalsIgnoreCase(cmd) || "sendFile".equalsIgnoreCase(cmd)) {
-                sendUDPFile(socketOut, "230.0.0.1", 8888);
+                sendUDPFile(socketOut);
             } else if ("exit".equalsIgnoreCase(cmd) || socketOut.isClosed()) {
                 if ("exit".equalsIgnoreCase(cmd))
-                    sendCloseNotificationToChatReceiver("230.0.0.1", socketIn.getLocalPort());
+                    sendCloseNotificationToChatReceiver();
                 break;
             } else if (cmd.isEmpty()) {
                 continue;
@@ -65,10 +67,10 @@ public class MulticastChatClient implements Runnable{
 
 
 
-    private void sendCloseNotificationToChatReceiver(String ip, int port) throws IOException {
+    private void sendCloseNotificationToChatReceiver() throws IOException {
         byte[] msg = "_CLOSE_SOCKET".getBytes();
-        InetAddress to = InetAddress.getByName(ip);
-        DatagramPacket packet = new DatagramPacket(msg, msg.length, to, port);
+        InetAddress to = InetAddress.getByName(IP);
+        DatagramPacket packet = new DatagramPacket(msg, msg.length, to, PORT);
         socketOut.send(packet);
         try {
             receiveThread.join();
@@ -77,40 +79,41 @@ public class MulticastChatClient implements Runnable{
         }
     }
 
-    public static void sendUDPText(DatagramSocket socketOut, String ip, int port) throws IOException {
+    public static void sendUDPText(DatagramSocket socketOut) throws IOException {
         Scanner sc = new Scanner(System.in);
         String line = sc.nextLine();
 
-        InetAddress to = InetAddress.getByName(ip);
+        InetAddress to = InetAddress.getByName(IP);
         byte[] msg = ("_TEXT " + line).getBytes();
 
-        DatagramPacket packet = new DatagramPacket(msg, msg.length, to, port);
+        DatagramPacket packet = new DatagramPacket(msg, msg.length, to, PORT);
 
         socketOut.send(packet);
     }
 
-    private void sendUDPFile(DatagramSocket socketOut, String ip, int port) throws IOException {
+    private void sendUDPFile(DatagramSocket socketOut) throws IOException {
         Scanner sc = new Scanner(System.in);
         String url = sc.nextLine();
         String fileName = url.substring(url.lastIndexOf("\\") + 1);
-        InetAddress to = InetAddress.getByName(ip);
+        InetAddress to = InetAddress.getByName(IP);
 
         byte[] msg = ("_TEXT sending " + fileName).getBytes();
-        DatagramPacket packet = new DatagramPacket(msg, msg.length, to, port);
+        DatagramPacket packet = new DatagramPacket(msg, msg.length, to, PORT);
         socketOut.send(packet);
 
         msg = ("_FILE " + fileName).getBytes();
-        packet = new DatagramPacket(msg, msg.length, to, port);
+        packet = new DatagramPacket(msg, msg.length, to, PORT);
         socketOut.send(packet);
 
         int end;
         byte[] file = fileToBytes(url);
         if (file != null) {
-            for (int offset = 0; offset < file.length; offset += 1024) {
-                end = (file.length < offset + 1024) ? file.length : offset + 1024;
+            for (int offset = 0; offset < file.length; offset += PACKET_SIZE) {
+                end = (file.length < offset + PACKET_SIZE) ? file.length : offset + PACKET_SIZE;
                 byte[] data = Arrays.copyOfRange(file, offset, end);
-                packet = new DatagramPacket(data, data.length, to, port);
+                packet = new DatagramPacket(data, data.length, to, PORT);
                 socketOut.send(packet);
+
             }
         }
         else {
@@ -118,7 +121,7 @@ public class MulticastChatClient implements Runnable{
         }
 
         msg = ("_END").getBytes();
-        packet = new DatagramPacket(msg, msg.length, to, port);
+        packet = new DatagramPacket(msg, msg.length, to, PORT);
         socketOut.send(packet);
     }
 
@@ -127,7 +130,6 @@ public class MulticastChatClient implements Runnable{
         try {
             bs = Files.readAllBytes(Path.of(url));
         } catch (IOException e) {
-            e.printStackTrace();
             return  null;
         }
         return bs;

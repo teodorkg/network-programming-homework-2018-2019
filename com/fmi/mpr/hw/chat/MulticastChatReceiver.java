@@ -5,6 +5,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.*;
 
+import static com.fmi.mpr.hw.chat.Globals.*;
+
 public class MulticastChatReceiver implements Runnable{
     MulticastSocket socketIn;
     DatagramSocket socketOut;
@@ -14,10 +16,10 @@ public class MulticastChatReceiver implements Runnable{
         this.socketOut = socketOut;
     }
 
-    public void receiveUDP(String ip, int port) throws IOException {
+    public void receiveUDP() throws IOException {
 
-        byte[] buffer = new byte[1024];
-        InetAddress group = InetAddress.getByName(ip);
+        byte[] buffer = new byte[PACKET_SIZE];
+        InetAddress group = InetAddress.getByName(IP);
         socketIn.joinGroup(group);
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
         while(!socketIn.isClosed()) {
@@ -30,6 +32,7 @@ public class MulticastChatReceiver implements Runnable{
             if (packet.getPort() == socketOut.getLocalPort()) {
                 //message from myself
                 if ("_CLOSE_SOCKET".equals(msgCmdPart)) {
+                    socketIn.leaveGroup(group);
                     socketIn.close();
                     socketOut.close();
                 }
@@ -45,8 +48,17 @@ public class MulticastChatReceiver implements Runnable{
                     System.out.println(packet.getSocketAddress().toString() + ": " + msg);
                 else if ("_FILE".equals(msgCmdPart)) {
                     String fileNameAndExt = msg;
-                    String fileName = fileNameAndExt.substring(0, fileNameAndExt.lastIndexOf('.'));
-                    String extension = fileNameAndExt.substring(fileNameAndExt.lastIndexOf('.'));
+                    int lastIndexOfDot = fileNameAndExt.lastIndexOf('.');
+                    String fileName;
+                    String extension;
+                    if (lastIndexOfDot != -1) {
+                        fileName = fileNameAndExt.substring(0, lastIndexOfDot);
+                        extension = fileNameAndExt.substring(lastIndexOfDot);
+                    }
+                    else {
+                        fileName = fileNameAndExt;
+                        extension = "";
+                    }
                     fileName = socketOut.getLocalPort() + File.separator + fileName;
                     File receivingFile = new File(fileName + extension);
                     int i = 0;
@@ -54,8 +66,9 @@ public class MulticastChatReceiver implements Runnable{
                         i++;
                         receivingFile = new File(fileName + "(" + i + ")" + extension);
                     }
-                    if (i > 0)
+                    if (i > 0) {
                         fileName = fileName + "(" + i + ")";
+                    }
                     receivingFile.getParentFile().mkdirs();
                     receivingFile.createNewFile();
                     FileOutputStream receiving = new FileOutputStream(receivingFile);
@@ -67,7 +80,7 @@ public class MulticastChatReceiver implements Runnable{
     }
 
     private void receiveUDPFile(FileOutputStream receiving) throws IOException {
-        byte[] buffer = new byte[1024];
+        byte[] buffer = new byte[PACKET_SIZE];
         String msg;
         DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
         socketIn.receive(packet);
@@ -84,7 +97,7 @@ public class MulticastChatReceiver implements Runnable{
     @Override
     public void run() {
         try {
-            receiveUDP("230.0.0.1", 8888);
+            receiveUDP();
         } catch (IOException e) {
             e.printStackTrace();
         }
